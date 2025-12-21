@@ -22,6 +22,7 @@ class EdgeTTSEngine(BaseTTSEngine):
     def __init__(self, voice: Optional[str] = None):
         self._voice = voice or config.audio.tts_voice
         self._offline_engine = None
+        self._current_process = None  # Track current audio process for skipping
         
     @property
     def provider_name(self) -> str:
@@ -36,6 +37,16 @@ class EdgeTTSEngine(BaseTTSEngine):
         except ImportError:
             console.print("[yellow]⚠️  edge-tts not installed[/yellow]")
             return False
+    
+    def stop(self):
+        """Stop current audio playback (used for skipping)."""
+        if self._current_process:
+            try:
+                self._current_process.terminate()
+                console.print("[dim]⏭️  Skipped[/dim]")
+            except Exception:
+                pass
+            self._current_process = None
     
     def _init_offline_fallback(self):
         """Initialize pyttsx3 as fallback."""
@@ -55,7 +66,7 @@ class EdgeTTSEngine(BaseTTSEngine):
         try:
             import edge_tts
             
-            console.print("[cyan]🔊 Speaking (edge-tts)...[/cyan]")
+            console.print("[cyan]🔊 Speaking (edge-tts)... [dim]Press Enter to skip[/dim][/cyan]")
             
             communicate = edge_tts.Communicate(text, self._voice)
             
@@ -73,7 +84,10 @@ class EdgeTTSEngine(BaseTTSEngine):
             return self._speak_offline(text)
     
     async def _play_audio_async(self, filepath: str):
-        """Play audio file asynchronously."""
+        """Play audio file asynchronously with skip support."""
+        import sys
+        import select
+        
         try:
             players = [
                 ("mpv", ["--no-video", filepath]),
@@ -88,7 +102,20 @@ class EdgeTTSEngine(BaseTTSEngine):
                         stdout=asyncio.subprocess.DEVNULL,
                         stderr=asyncio.subprocess.DEVNULL
                     )
-                    await proc.wait()
+                    self._current_process = proc
+                    
+                    # Wait for process with skip check
+                    while proc.returncode is None:
+                        # Check if Enter was pressed (non-blocking)
+                        if sys.stdin in select.select([sys.stdin], [], [], 0.1)[0]:
+                            line = sys.stdin.readline()
+                            if line.strip().lower() in ('', 'skip', 's'):
+                                proc.terminate()
+                                console.print("[dim]⏭️  Skipped[/dim]")
+                                break
+                        await asyncio.sleep(0.1)
+                    
+                    self._current_process = None
                     return
                 except FileNotFoundError:
                     continue

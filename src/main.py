@@ -18,6 +18,8 @@ from rich.text import Text
 from rich import box
 
 from src.config import config
+from src.parameters import EMAIL_COUNT, BODY_PREVIEW_LENGTH
+from src.stats import start_session, log_email_processed, show_stats, UsageStats
 from src.core.email_client import EmailClient, Email
 from src.core.llm import create_llm_engine, EmailCategory, ClassificationResult
 from src.audio.tts import create_tts_engine
@@ -63,6 +65,7 @@ class MailMindApp:
         self._voice_mode = voice_mode
         self._processed_emails: list[ProcessedEmail] = []
         self._running = False
+        self._stats: UsageStats = None  # Will be initialized on run
         
     def run(self, continuous: bool = False, check_interval: int = 60):
         """
@@ -74,6 +77,10 @@ class MailMindApp:
         """
         console.print(BANNER)
         self._show_status()
+        
+        # Start tracking session
+        self._stats = start_session()
+        console.print(f"[dim]📊 Session #{self._stats.total_sessions} | Total emails processed: {self._stats.total_emails_processed}[/dim]\n")
         
         if not self._preflight_check():
             return
@@ -89,6 +96,8 @@ class MailMindApp:
             console.print("\n[yellow]👋 Interrupted. Goodbye![/yellow]")
         finally:
             self._running = False
+            # Show usage stats
+            show_stats()
     
     def _show_status(self):
         """Display system status."""
@@ -157,7 +166,7 @@ class MailMindApp:
         console.print(Panel("[bold]📬 Fetching emails...[/bold]", border_style="cyan"))
         
         with self._email_client as client:
-            emails = list(client.fetch_unread(limit=10))
+            emails = list(client.fetch_unread(limit=EMAIL_COUNT))
             
             if not emails:
                 console.print("[dim]No unread emails. You're all caught up! 🎉[/dim]")
@@ -198,6 +207,15 @@ class MailMindApp:
         """Process a single email: classify, summarize, and optionally speak."""
         console.print(f"\n{email}\n")
         
+        # Show email body preview
+        body_preview = email.body[:BODY_PREVIEW_LENGTH] + "..." if len(email.body) > BODY_PREVIEW_LENGTH else email.body
+        console.print(Panel(
+            body_preview,
+            title="[bold]📄 Email Content[/bold]",
+            border_style="dim",
+            padding=(0, 1)
+        ))
+        
         # Classify
         classification = self._llm.classify(
             subject=email.subject,
@@ -218,15 +236,20 @@ class MailMindApp:
         )
         self._processed_emails.append(processed)
         
-        # Speak important emails
-        if classification.category == EmailCategory.IMPORTANT and self._speaker:
+        # Log this email was processed
+        if self._stats:
+            self._stats = log_email_processed(self._stats)
+        
+        # Speak all email summaries
+        if self._speaker:
+            category_name = classification.category.value.lower()
             self._speaker.speak(
-                f"Important email from {email.sender_name}. {summary}"
+                f"{category_name} email from {email.sender_name}. {summary}"
             )
             processed.spoken = True
             
-            # Listen for response
-            if self._listener:
+            # Listen for response on important emails
+            if classification.category == EmailCategory.IMPORTANT and self._listener:
                 self._handle_voice_command(processed)
     
     def _handle_voice_command(self, processed: ProcessedEmail):

@@ -54,7 +54,7 @@ Categories:
 Return ONLY valid JSON in this exact format, no other text:
 {"category": "IMPORTANT|NEWSLETTER|SPAM", "reason": "brief one-sentence explanation"}"""
 
-    SUMMARIZER_PROMPT = """You are an email summarizer. Create a concise 1-2 sentence summary of the email.
+    SUMMARIZER_PROMPT = """You are an email summarizer. Create a concise 1-2 sentence summary of the email in English.
 Focus on: who sent it, what they want/need, any deadlines or action items.
 Be brief and direct. Return ONLY the summary text, no formatting."""
 
