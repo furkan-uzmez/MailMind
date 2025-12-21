@@ -72,10 +72,21 @@ class OllamaEngine(BaseLLMEngine):
     def is_available(self) -> bool:
         """Check if Ollama is running and model is available."""
         try:
-            models = ollama.list()
-            available = [m["name"].split(":")[0] for m in models.get("models", [])]
+            response = ollama.list()
             
-            if self._model.split(":")[0] in available:
+            # Handle both old dict format and new object format
+            if hasattr(response, 'models'):
+                # New API: response.models is a list of Model objects
+                available = [m.model.split(":")[0] for m in response.models]
+            elif isinstance(response, dict) and "models" in response:
+                # Old API: response is a dict with "models" key
+                available = [m.get("name", m.get("model", "")).split(":")[0] for m in response["models"]]
+            else:
+                available = []
+            
+            model_base = self._model.split(":")[0]
+            
+            if model_base in available:
                 console.print(f"[green]✅ Ollama ready with model: {self._model}[/green]")
                 return True
             else:
