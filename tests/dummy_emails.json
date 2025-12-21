@@ -1,0 +1,37 @@
+[
+    {
+        "uid": "1",
+        "subject": "Q4 Budget Review Meeting Tomorrow",
+        "sender": "boss@company.com",
+        "sender_name": "John Smith",
+        "body": "Hi team,\n\nReminder that we have the Q4 budget review meeting tomorrow at 2pm in Conference Room A.\n\nPlease bring your department reports and be prepared to discuss:\n- Current spend vs. budget\n- Q1 projections\n- Any capital expenditure requests\n\nLooking forward to seeing everyone there.\n\nBest,\nJohn"
+    },
+    {
+        "uid": "2",
+        "subject": "50% OFF Everything - Black Friday Extended!",
+        "sender": "deals@bigstore.com",
+        "sender_name": "BigStore Deals",
+        "body": "BLACK FRIDAY EXTENDED!\n\n50% OFF EVERYTHING!\n\nShop now before it's too late!\n\nFree shipping on orders over $50.\n\nUnsubscribe | Privacy Policy"
+    },
+    {
+        "uid": "3",
+        "subject": "Your weekly digest from Dev Community",
+        "sender": "newsletter@dev.to",
+        "sender_name": "DEV Community",
+        "body": "This week's top articles:\n\n1. 10 Tips for Better Code Reviews\n2. Understanding Async/Await in Python\n3. Building Your First CLI Tool\n\nTrending discussions:\n- Is AI going to replace developers?\n- Best practices for remote teams\n\nHappy coding!\n\nThe DEV Team"
+    },
+    {
+        "uid": "4",
+        "subject": "URGENT: Your account has been compromised",
+        "sender": "security-alert@bank-secure-verify.com",
+        "sender_name": "Bank Security",
+        "body": "Dear Valued Customer,\n\nWe have detected suspicious activity on your account. Click the link below IMMEDIATELY to verify your identity:\n\nhttp://totally-not-a-scam.com/verify\n\nFailure to act within 24 hours will result in account suspension.\n\nBank Security Team"
+    },
+    {
+        "uid": "5",
+        "subject": "Re: Project Alpha deadline extension",
+        "sender": "sarah.johnson@company.com",
+        "sender_name": "Sarah Johnson",
+        "body": "Hey,\n\nThanks for reaching out about the deadline. I spoke with the stakeholders and we can extend it by one week.\n\nNew deadline: December 28th\n\nLet me know if you need anything else.\n\n- Sarah"
+    }
+]
