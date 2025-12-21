@@ -1,23 +1,21 @@
 """
-Speech-to-Text module using faster-whisper.
-Handles microphone input and transcription for voice commands.
+Local STT provider using faster-whisper.
+Runs entirely on local hardware with int8 quantization for speed.
 """
 
-import queue
-import threading
-from typing import Optional, Callable
+from typing import Callable, Optional
 
 import numpy as np
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from .base import BaseSTTEngine
 from src.config import config
 
 console = Console()
 
 
-class Listener:
-    """STT engine using faster-whisper with microphone input."""
+class WhisperEngine(BaseSTTEngine):
+    """Local STT engine using faster-whisper."""
     
     def __init__(
         self,
@@ -29,8 +27,11 @@ class Listener:
         self._model = None
         self._sample_rate = 16000
         self._is_listening = False
-        self._audio_queue: queue.Queue = queue.Queue()
         
+    @property
+    def provider_name(self) -> str:
+        return "whisper"
+    
     def _init_model(self):
         """Lazy-load the Whisper model."""
         if self._model is None:
@@ -42,7 +43,7 @@ class Listener:
                 self._model = WhisperModel(
                     self._model_size,
                     device=self._device,
-                    compute_type="int8"  # Optimized for speed
+                    compute_type="int8"
                 )
                 
                 console.print("[green]✅ Whisper model loaded![/green]")
@@ -51,9 +52,16 @@ class Listener:
                 console.print("[red]❌ faster-whisper not installed[/red]")
                 console.print("[yellow]💡 Run: pip install faster-whisper[/yellow]")
                 raise
-            except Exception as e:
-                console.print(f"[red]❌ Failed to load Whisper: {e}[/red]")
-                raise
+    
+    def is_available(self) -> bool:
+        """Check if faster-whisper is available."""
+        try:
+            import faster_whisper
+            console.print(f"[green]✅ faster-whisper available (model: {self._model_size})[/green]")
+            return True
+        except ImportError:
+            console.print("[yellow]⚠️  faster-whisper not installed[/yellow]")
+            return False
     
     def listen(
         self,
@@ -61,17 +69,7 @@ class Listener:
         prompt: str = "🎤 Listening...",
         silence_threshold: float = 0.01
     ) -> str:
-        """
-        Listen for voice input and transcribe.
-        
-        Args:
-            duration: Maximum recording duration in seconds
-            prompt: Prompt to display while listening
-            silence_threshold: Audio level below which is considered silence
-            
-        Returns:
-            Transcribed text or empty string if nothing detected
-        """
+        """Listen for voice input and transcribe."""
         self._init_model()
         
         try:
@@ -83,7 +81,6 @@ class Listener:
         console.print(f"\n[bold cyan]{prompt}[/bold cyan] (speak now, {duration}s)")
         
         try:
-            # Record audio
             recording = sd.rec(
                 int(duration * self._sample_rate),
                 samplerate=self._sample_rate,
@@ -92,30 +89,25 @@ class Listener:
             )
             sd.wait()
             
-            # Check if we got meaningful audio
             audio_level = np.abs(recording).mean()
             if audio_level < silence_threshold:
                 console.print("[dim]🔇 No speech detected[/dim]")
                 return ""
             
-            console.print("[cyan]🔄 Transcribing...[/cyan]")
+            console.print("[cyan]🔄 Transcribing (local)...[/cyan]")
             
-            # Transcribe
             audio = recording.flatten()
             segments, info = self._model.transcribe(
                 audio,
                 language="en",
                 beam_size=5,
-                vad_filter=True  # Filter out non-speech
+                vad_filter=True
             )
             
-            # Collect transcription
             text = " ".join(segment.text for segment in segments).strip()
             
             if text:
                 console.print(f"[green]📝 You said: \"{text}\"[/green]")
-            else:
-                console.print("[dim]🔇 Could not transcribe audio[/dim]")
             
             return text
             
@@ -127,23 +119,14 @@ class Listener:
         self,
         callback: Callable[[str], bool],
         wake_word: Optional[str] = None,
-        silence_timeout: float = 2.0
     ):
-        """
-        Continuously listen and call callback with transcribed text.
-        
-        Args:
-            callback: Function that receives transcribed text, returns False to stop
-            wake_word: Optional wake word to filter (e.g., "hey assistant")
-            silence_timeout: Seconds of silence before processing
-        """
+        """Continuously listen and call callback."""
         self._init_model()
         self._is_listening = True
         
         console.print("[bold green]🎤 Continuous listening started[/bold green]")
         if wake_word:
             console.print(f"[dim]Wake word: \"{wake_word}\"[/dim]")
-        console.print("[dim]Say 'stop listening' to quit[/dim]")
         
         try:
             while self._is_listening:
@@ -152,16 +135,12 @@ class Listener:
                 if not text:
                     continue
                 
-                # Check for stop command
                 if "stop listening" in text.lower():
-                    console.print("[yellow]👋 Stopping listener...[/yellow]")
                     break
                 
-                # Check wake word if set
                 if wake_word and wake_word.lower() not in text.lower():
                     continue
                 
-                # Call the callback
                 if not callback(text):
                     break
                     
@@ -181,23 +160,8 @@ class Listener:
             
             device_info = sd.query_devices(kind="input")
             console.print(f"[green]✅ Microphone: {device_info['name']}[/green]")
-            console.print(f"[dim]   Channels: {device_info['max_input_channels']}[/dim]")
-            console.print(f"[dim]   Sample rate: {device_info['default_samplerate']} Hz[/dim]")
-            
             return True
             
         except Exception as e:
             console.print(f"[red]❌ No microphone found: {e}[/red]")
             return False
-
-
-# Quick test
-if __name__ == "__main__":
-    listener = Listener()
-    
-    console.print("[bold]Testing microphone...[/bold]")
-    if listener.test_microphone():
-        console.print("\n[bold]Testing transcription...[/bold]")
-        text = listener.listen(duration=5.0)
-        if text:
-            console.print(f"[bold green]Transcribed: {text}[/bold green]")

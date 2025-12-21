@@ -19,9 +19,9 @@ from rich import box
 
 from src.config import config
 from src.core.email_client import EmailClient, Email
-from src.core.llm_engine import LLMEngine, EmailCategory, ClassificationResult
-from src.audio.speaker import Speaker
-from src.audio.listener import Listener
+from src.core.llm import create_llm_engine, EmailCategory, ClassificationResult
+from src.audio.tts import create_tts_engine
+from src.audio.stt import create_stt_engine
 
 console = Console()
 
@@ -57,9 +57,9 @@ class MailMindApp:
     
     def __init__(self, voice_mode: bool = True):
         self._email_client = EmailClient()
-        self._llm = LLMEngine()
-        self._speaker = Speaker() if voice_mode else None
-        self._listener = Listener() if voice_mode else None
+        self._llm = create_llm_engine()  # Uses LLM_PROVIDER env var
+        self._speaker = create_tts_engine() if voice_mode else None  # Uses TTS_PROVIDER
+        self._listener = create_stt_engine() if voice_mode else None  # Uses STT_PROVIDER
         self._voice_mode = voice_mode
         self._processed_emails: list[ProcessedEmail] = []
         self._running = False
@@ -95,25 +95,34 @@ class MailMindApp:
         table = Table(title="System Status", box=box.ROUNDED)
         table.add_column("Component", style="cyan")
         table.add_column("Status", style="green")
-        table.add_column("Details", style="dim")
+        table.add_column("Provider", style="dim")
         
         # Email
         email_ok = bool(config.email.user and config.email.password)
         table.add_row(
             "Email",
             "✅ Configured" if email_ok else "❌ Not configured",
-            f"{config.email.imap_server}" if email_ok else "Set EMAIL_USER & EMAIL_PASS"
+            config.email.imap_server if email_ok else "Set EMAIL_USER & EMAIL_PASS"
         )
         
         # LLM
-        table.add_row("LLM", "⏳ Checking...", f"Ollama ({config.ollama.model})")
-        
-        # Voice
         table.add_row(
-            "Voice",
-            "✅ Enabled" if self._voice_mode else "❌ Disabled",
-            "TTS + STT" if self._voice_mode else "--voice flag to enable"
+            "LLM",
+            "⏳ Checking...",
+            self._llm.provider_name
         )
+        
+        # TTS
+        if self._speaker:
+            table.add_row("TTS", "✅ Enabled", self._speaker.provider_name)
+        else:
+            table.add_row("TTS", "❌ Disabled", "--no-voice")
+        
+        # STT
+        if self._listener:
+            table.add_row("STT", "✅ Enabled", self._listener.provider_name)
+        else:
+            table.add_row("STT", "❌ Disabled", "--no-voice")
         
         console.print(table)
         console.print()
@@ -131,8 +140,13 @@ class MailMindApp:
             console.print("[red]❌ LLM not available. Exiting.[/red]")
             return False
         
-        # Check microphone (if voice mode)
-        if self._voice_mode and self._listener:
+        # Check TTS
+        if self._speaker and not self._speaker.is_available():
+            console.print("[yellow]⚠️  TTS not available, continuing without voice output[/yellow]")
+            self._speaker = None
+        
+        # Check STT
+        if self._listener:
             self._listener.test_microphone()
         
         console.print("\n[bold green]✅ All systems go![/bold green]\n")
