@@ -65,11 +65,12 @@ class WhisperEngine(BaseSTTEngine):
     
     def listen(
         self,
-        duration: float = 5.0,
+        max_duration: float = 30.0,
+        silence_timeout: float = 2.0,
         prompt: str = "🎤 Listening...",
-        silence_threshold: float = 0.01
+        threshold: float = 0.02
     ) -> str:
-        """Listen for voice input and transcribe."""
+        """Listen for voice input with silence detection."""
         self._init_model()
         
         try:
@@ -78,21 +79,63 @@ class WhisperEngine(BaseSTTEngine):
             console.print("[red]❌ sounddevice not installed[/red]")
             return ""
         
-        console.print(f"\n[bold cyan]{prompt}[/bold cyan] (speak now, {duration}s)")
+        console.print(f"\n[bold cyan]{prompt}[/bold cyan] (Speak now...)")
         
-        try:
-            recording = sd.rec(
-                int(duration * self._sample_rate),
-                samplerate=self._sample_rate,
-                channels=1,
-                dtype=np.float32
-            )
-            sd.wait()
+        audio_buffer = []
+        silence_start = None
+        has_started_speaking = False
+        start_time = None
+        
+        def callback(indata, frames, time, status):
+            if status:
+                console.print(status)
+            audio_buffer.append(indata.copy())
             
-            audio_level = np.abs(recording).mean()
-            if audio_level < silence_threshold:
-                console.print("[dim]🔇 No speech detected[/dim]")
-                return ""
+        # 1. Wait for speech to start (max 5 seconds of silence allowed at start)
+        try:
+            # We'll do a simple blocking loop for manual control
+            # Using raw stream for better control than sd.rec
+            with sd.InputStream(samplerate=self._sample_rate, channels=1, dtype=np.float32) as stream:
+                import time
+                start_time = time.time()
+                last_speech_time = time.time()
+                
+                while True:
+                    # Read chunk (0.1s)
+                    chunk, overflow = stream.read(int(self._sample_rate * 0.1))
+                    audio_buffer.append(chunk)
+                    
+                    # Check volume
+                    volume = np.abs(chunk).mean()
+                    current_time = time.time()
+                    
+                    if volume > threshold:
+                        if not has_started_speaking:
+                            console.print("[green]🗣️  Speech detected...[/green]")
+                            has_started_speaking = True
+                        last_speech_time = current_time
+                    
+                    # Logic
+                    elapsed = current_time - start_time
+                    silence_duration = current_time - last_speech_time
+                    
+                    # 1. Timeout if never started speaking
+                    if not has_started_speaking and elapsed > 5.0:
+                        console.print("[dim]🔇 No speech detected (timeout)[/dim]")
+                        return ""
+                    
+                    # 2. Stop if silence after speech
+                    if has_started_speaking and silence_duration > silence_timeout:
+                        console.print("[dim]✅ Finished speaking[/dim]")
+                        break
+                        
+                    # 3. Hard cutoff
+                    if elapsed > max_duration:
+                        console.print("[yellow]⚠️  Max duration reached[/yellow]")
+                        break
+                        
+            # Process audio
+            recording = np.concatenate(audio_buffer, axis=0)
             
             console.print("[cyan]🔄 Transcribing (local)...[/cyan]")
             

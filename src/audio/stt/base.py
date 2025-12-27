@@ -29,14 +29,16 @@ class BaseSTTEngine(ABC):
     @abstractmethod
     def listen(
         self,
-        duration: float = 5.0,
+        max_duration: float = 30.0,
+        silence_timeout: float = 2.0,
         prompt: str = "🎤 Listening...",
     ) -> str:
         """
-        Listen for voice input and transcribe.
+        Listen for voice input and transcribe with silence detection.
         
         Args:
-            duration: Maximum recording duration in seconds
+            max_duration: Maximum recording duration in seconds
+            silence_timeout: Stop recording after this many seconds of silence
             prompt: Prompt to display while listening
             
         Returns:

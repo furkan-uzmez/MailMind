@@ -55,9 +55,9 @@ class OpenAIWhisperEngine(BaseSTTEngine):
     
     def listen(
         self,
-        duration: float = 5.0,
+        max_duration: float = 30.0,
+        silence_timeout: float = 2.0,
         prompt: str = "🎤 Listening...",
-        silence_threshold: float = 0.01
     ) -> str:
         """Listen and transcribe using OpenAI Whisper API."""
         try:
@@ -67,11 +67,12 @@ class OpenAIWhisperEngine(BaseSTTEngine):
             console.print("[red]❌ sounddevice/scipy not installed[/red]")
             return ""
         
-        console.print(f"\n[bold cyan]{prompt}[/bold cyan] (speak now, {duration}s)")
+        console.print(f"\n[bold cyan]{prompt}[/bold cyan] (speak now, max {max_duration}s)")
         
         try:
+            # Note: Cloud provider doesn't support VAD yet, using fixed duration
             recording = sd.rec(
-                int(duration * self._sample_rate),
+                int(max_duration * self._sample_rate),
                 samplerate=self._sample_rate,
                 channels=1,
                 dtype=np.float32

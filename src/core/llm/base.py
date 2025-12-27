@@ -56,6 +56,7 @@ Return ONLY valid JSON in this exact format, no other text:
 
     SUMMARIZER_PROMPT = """You are an email summarizer. Create a concise 1-2 sentence summary of the email in English.
 Focus on: who sent it, what they want/need, any deadlines or action items.
+IMPORTANT: If the text starts with "Security Check:" or "SECURITY WARNING:", you MUST include that exact information in your summary first.
 Be brief and direct. Return ONLY the summary text, no formatting."""
 
     REPLY_PROMPT = """You are an email assistant helping draft a reply.

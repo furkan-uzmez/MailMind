@@ -55,11 +55,18 @@ class AudioConfig:
 
 
 @dataclass
+class SecurityConfig:
+    """Security configuration."""
+    safe_browsing_api_key: str = field(default_factory=lambda: os.getenv("SAFE_BROWSING_API_KEY", ""))
+
+
+@dataclass
 class Config:
     """Main configuration container."""
     email: EmailConfig = field(default_factory=EmailConfig)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
+    security: SecurityConfig = field(default_factory=SecurityConfig)
 
     @classmethod
     def load(cls) -> "Config":

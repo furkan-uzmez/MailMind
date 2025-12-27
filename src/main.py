@@ -22,6 +22,7 @@ from src.parameters import EMAIL_COUNT, BODY_PREVIEW_LENGTH
 from src.stats import start_session, log_email_processed, show_stats, UsageStats
 from src.core.email_client import EmailClient, Email
 from src.core.llm import create_llm_engine, EmailCategory, ClassificationResult
+from src.core.security import LinkScanner
 from src.audio.tts import create_tts_engine
 from src.audio.stt import create_stt_engine
 
@@ -60,6 +61,7 @@ class MailMindApp:
     def __init__(self, voice_mode: bool = True):
         self._email_client = EmailClient()
         self._llm = create_llm_engine()  # Uses LLM_PROVIDER env var
+        self._scanner = LinkScanner()
         self._speaker = create_tts_engine() if voice_mode else None  # Uses TTS_PROVIDER
         self._listener = create_stt_engine() if voice_mode else None  # Uses STT_PROVIDER
         self._voice_mode = voice_mode
@@ -223,10 +225,31 @@ class MailMindApp:
             sender=email.sender
         )
         
+        # Security Scan
+        security_analysis = self._scanner.analyze_email_content(email.body)
+        security_context = ""
+        
+        if not security_analysis["safe"]:
+            # Prepend security warning to summary context
+            security_context = "SECURITY WARNING: " + "; ".join(security_analysis["warnings"]) + "\n\n"
+            
+            # Force classification update if dangerous
+            if classification.category != EmailCategory.SPAM:
+                 classification = ClassificationResult(
+                     category=EmailCategory.SPAM,
+                     reason=f"Security Threat Detected: {security_analysis['warnings'][0]}"
+                 )
+        elif security_analysis["link_count"] > 0:
+            # Explicitly state links are safe
+            security_context = f"Security Check: {security_analysis['link_count']} links found. All links appear SAFE via Google Safe Browsing.\n\n"
+        
         # Summarize (always, for context)
+        # We inject security warnings into the body sent to summarizer
+        summary_body = security_context + email.body
+        
         summary = self._llm.summarize(
             subject=email.subject,
-            body=email.body
+            body=summary_body
         )
         
         processed = ProcessedEmail(
@@ -249,18 +272,19 @@ class MailMindApp:
             processed.spoken = True
             
             # Listen for response on important emails
-            if classification.category == EmailCategory.IMPORTANT and self._listener:
+            # Listen for response (wait 5s)
+            if self._listener:
                 self._handle_voice_command(processed)
     
     def _handle_voice_command(self, processed: ProcessedEmail):
-        """Handle voice commands after reading an important email."""
+        """Handle voice commands after reading an email."""
         console.print("\n[bold cyan]💬 What would you like to do?[/bold cyan]")
         console.print("[dim]Say: 'reply', 'skip', 'read again', or ask a question[/dim]")
         
         if not self._listener:
             return
         
-        command = self._listener.listen(duration=5.0)
+        command = self._listener.listen()
         
         if not command:
             return
@@ -278,7 +302,7 @@ class MailMindApp:
         
         if "reply" in command_lower:
             console.print("[cyan]What would you like to say?[/cyan]")
-            intent = self._listener.listen(duration=8.0)
+            intent = self._listener.listen()
             
             if intent:
                 email_context = f"From: {processed.email.sender}\nSubject: {processed.email.subject}\n\n{processed.email.body}"
