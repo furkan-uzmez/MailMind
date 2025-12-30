@@ -49,6 +49,9 @@ def load_stats() -> UsageStats:
 
 def save_stats(stats: UsageStats):
     """Save stats to JSON file."""
+    # Ensure logs directory exists
+    STATS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    
     with open(STATS_FILE, "w") as f:
         json.dump(stats.to_dict(), f, indent=2)
 
