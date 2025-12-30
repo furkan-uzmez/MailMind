@@ -97,6 +97,24 @@ class WhisperEngine(BaseSTTEngine):
             # Using raw stream for better control than sd.rec
             with sd.InputStream(samplerate=self._sample_rate, channels=1, dtype=np.float32) as stream:
                 import time
+                
+                # Calibration Phase
+                console.print("[dim]Adjusting for background noise...[/dim]")
+                calibration_chunks = []
+                for _ in range(10):  # 1 second calibration
+                     chunk, _ = stream.read(int(self._sample_rate * 0.1))
+                     calibration_chunks.append(np.abs(chunk).mean())
+                
+                ambient_noise = sum(calibration_chunks) / len(calibration_chunks)
+                # Set threshold to 2x ambient or default 0.02, whichever is higher, capped at 0.1
+                adjusted_threshold = max(threshold, ambient_noise * 2.0)
+                adjusted_threshold = min(adjusted_threshold, 0.1) # Safety cap
+                
+                if adjusted_threshold > threshold:
+                    console.print(f"[dim]Threshold adjusted to {adjusted_threshold:.3f} (Ambient: {ambient_noise:.3f})[/dim]")
+                
+                console.print(f"\n[bold cyan]{prompt}[/bold cyan] (Speak now...)")
+                
                 start_time = time.time()
                 last_speech_time = time.time()
                 
@@ -109,7 +127,7 @@ class WhisperEngine(BaseSTTEngine):
                     volume = np.abs(chunk).mean()
                     current_time = time.time()
                     
-                    if volume > threshold:
+                    if volume > adjusted_threshold:
                         if not has_started_speaking:
                             console.print("[green]🗣️  Speech detected...[/green]")
                             has_started_speaking = True
@@ -133,6 +151,10 @@ class WhisperEngine(BaseSTTEngine):
                     if elapsed > max_duration:
                         console.print("[yellow]⚠️  Max duration reached[/yellow]")
                         break
+                    
+                    # Warn if speaking for a long time (noise?)
+                    if has_started_speaking and elapsed > 15.0 and int(elapsed) % 5 == 0 and int(elapsed) != int(current_time - 0.1):
+                         console.print(f"[dim]Still listening... ({int(elapsed)}s) - Background noise might be too high[/dim]")
                         
             # Process audio
             recording = np.concatenate(audio_buffer, axis=0)
@@ -151,6 +173,8 @@ class WhisperEngine(BaseSTTEngine):
             
             if text:
                 console.print(f"[green]📝 You said: \"{text}\"[/green]")
+            else:
+                console.print("[yellow]⚠️  No text recognized (audio processed but result empty)[/yellow]")
             
             return text
             

@@ -21,13 +21,13 @@ MailMind uses a **pluggable provider pattern**. Switch services via `.env`:
 
 | Component | Local (Default) | Cloud Options |
 |-----------|-----------------|---------------|
-| **LLM** | Ollama | OpenAI GPT |
+| **LLM** | Ollama | OpenAI GPT, Google Gemini |
 | **STT** | faster-whisper | OpenAI Whisper API |
 | **TTS** | edge-tts | ElevenLabs |
 
 ```env
 # Switch to cloud providers
-LLM_PROVIDER=openai      # or "ollama" (default)
+LLM_PROVIDER=gemini      # or "openai", "ollama" (default)
 STT_PROVIDER=openai_whisper  # or "whisper" (default)
 TTS_PROVIDER=elevenlabs  # or "edge" (default)
 ```
@@ -38,9 +38,32 @@ TTS_PROVIDER=elevenlabs  # or "edge" (default)
 
 1. **Python 3.11+**
 2. **Ollama** (for local LLM) - Install from [ollama.ai](https://ollama.ai)
-3. **Audio dependencies** (Linux):
+3. **Audio dependencies**:
+   
+   **Ubuntu/Debian**:
    ```bash
    sudo apt install portaudio19-dev mpv
+   ```
+
+   **Fedora**:
+   ```bash
+   sudo dnf install portaudio-devel mpv
+   ```
+
+   **Arch Linux**:
+   ```bash
+   sudo pacman -S portaudio mpv
+   ```
+
+   **macOS**:
+   ```bash
+   brew install portaudio mpv
+   ```
+
+   **Windows**:
+   ```powershell
+   winget install mpv.mpv
+   # PortAudio is usually auto-installed with Python packages
    ```
 
 ### Setup
@@ -56,7 +79,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # For cloud providers (optional)
-pip install openai elevenlabs
+pip install openai google-generativeai elevenlabs
 
 # Configure environment
 cp .env.example .env
@@ -81,7 +104,7 @@ EMAIL_PASS=your-app-password
 IMAP_SERVER=imap.gmail.com
 
 # Provider Selection
-LLM_PROVIDER=ollama       # ollama | openai
+LLM_PROVIDER=ollama       # ollama | openai | gemini
 STT_PROVIDER=whisper      # whisper | openai_whisper
 TTS_PROVIDER=edge         # edge | elevenlabs
 
@@ -92,6 +115,7 @@ TTS_VOICE=en-US-AriaNeural
 
 # Cloud Provider Keys (if using cloud)
 # OPENAI_API_KEY=sk-...
+# GOOGLE_API_KEY=...
 # ELEVENLABS_API_KEY=...
 ```
 

@@ -34,6 +34,13 @@ def _register_providers():
     except ImportError:
         pass
 
+    # Gemini (cloud)
+    try:
+        from .gemini import GeminiEngine
+        _PROVIDERS["gemini"] = GeminiEngine
+    except ImportError:
+        pass
+
 
 def get_available_providers() -> list[str]:
     """Get list of available LLM provider names."""
