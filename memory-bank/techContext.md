@@ -18,6 +18,7 @@
 -   `ollama`: Local LLM interface.
 -   `google-generativeai`: Cloud LLM option.
 -   `openai`: Cloud LLM option (optional).
+-   `langgraph`: Stateful, multi-actor applications with LLMs.
 
 ### Audio
 -   **STT**: `faster-whisper` (local), `sounddevice`, `numpy`, `scipy`.

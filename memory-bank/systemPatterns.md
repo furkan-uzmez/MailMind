@@ -4,27 +4,26 @@
 MailMind follows a modular, pluggable architecture designed for easy switching between local and cloud providers.
 
 ### Core Components
-1.  **Main Loop (`src/main.py`)**: The central event loop that orchestrates Fetch -> Process -> Speak -> Listen.
-2.  **Email Client (`src/core/email_client.py`)**: Handles IMAP/SMTP interactions.
-3.  **LLM Engine (`src/core/llm/`)**:
-    -   Abstracts LLM providers (Ollama, OpenAI, Gemini).
-    -   Handles prompt construction for classification and summarization.
-4.  **Audio Subsystem (`src/audio/`)**:
-    -   `stt/`: Speech-to-Text providers (Faster-Whisper, OpenAI Whisper).
-    -   `tts/`: Text-to-Speech providers (Edge-TTS, ElevenLabs, pyttsx3 fallback).
-5.  **Configuration (`src/config.py`, `.env`)**: Centralized config for secrets and toggles.
+1.  **Main Entry (`src/main.py`)**: Bootstraps the application and runs the LangGraph workflow.
+2.  **Workflow Engine (`src/core/graph.py`)**: **LangGraph** state machine that manages the lifecycle of email processing vs user interaction.
+3.  **State Management (`src/core/state.py`)**: Typed `AgentState` managing context (Email, Summary, Conversation History).
+4.  **Email Client (`src/core/email_client.py`)**: Handles IMAP/SMTP interactions.
+5.  **LLM Engine (`src/core/llm/`)**: Abstracts LLM providers.
+6.  **Audio Subsystem (`src/audio/`)**: STT and TTS providers.
 
 ### Design Patterns
--   **Factory Pattern**: Used for LLM, STT, and TTS providers to allow easy instantiation based on config (e.g., `src/core/llm/factory.py`).
--   **Strategy Pattern**: Swappable algorithms for processing (Local vs Cloud).
--   **Safe Fallbacks**: If a preferred provider fails (or is not configured), the system should fail gracefully or fallback (e.g., TTS fallback).
+-   **State Machine (LangGraph)**: Replaces procedural loops. Nodes represent actions (Classify, Speak, Listen), edges represent flow control.
+-   **Factory Pattern**: Used for LLM, STT, and TTS providers.
+-   **Strategy Pattern**: Swappable algorithms for processing.
 
 ### Data Flow
-1.  **Input**: IMAP fetch -> Raw Email Data.
-2.  **Processing**: Raw Data -> LLM (Summarize/Classify) -> Structured `Email` Object.
-3.  **Output (Audio)**: `Email` Summary -> TTS -> Audio Output.
-4.  **Input (Voice)**: Microphone -> STT -> Text Command -> LLM (Intent Parsing) -> Action (Reply/Skip/Query).
+1.  **Input**: IMAP fetch -> `Email` Object.
+2.  **Graph Start**: `Email` object injected into `AgentState`.
+3.  **Processing Nodes**: Classify -> Security Scan -> Summarize.
+4.  **Interaction Loop**:
+    -   Speak Summary -> Wait for Voice Input.
+    -   Router decides next step: Reply (Draft Node), Skip (End), Question (QA Node), or Repeat.
 
 ### Tech Debt / Considerations
--   **Async/Sync**: Python's async nature for I/O (IMAP) vs CPU heavy (Local LLM) needs careful management.
--   **State Management**: Tracking which emails were read/skipped within a session (likely in-memory or simple JSON stats).
+-   **Async/Sync**: Graph nodes run synchronously currently; future optimization could parallelize scanning/classification.
+-   **Recursion Limit**: Long conversations need a high recursion limit in LangGraph.

@@ -11,13 +11,14 @@ A hands-free email assistant that uses local AI to intelligently triage your inb
 - 🔊 **Voice Interface**: TTS reads all email summaries aloud
 - ⏭️ **Skip Playback**: Press Enter during TTS to skip current email
 - 📊 **Usage Statistics**: Tracks sessions and emails processed
+- 🕸️ **Agentic Workflow**: Powered by **LangGraph** for stateful, robust conversations
 - 🔒 **Local-First**: Uses Ollama, faster-whisper, edge-tts by default
 - ☁️ **Cloud-Ready**: Easily switch to OpenAI, ElevenLabs via env vars
 - 🎨 **Cyberpunk Terminal UI**: Beautiful rich console output
 
 ## 🔄 Provider Architecture
 
-MailMind uses a **pluggable provider pattern**. Switch services via `.env`:
+MailMind uses a **pluggable provider pattern** orchestrated by a **LangGraph** state machine. Switch services via `.env`:
 
 | Component | Local (Default) | Cloud Options |
 |-----------|-----------------|---------------|

@@ -25,6 +25,7 @@ from src.core.llm import create_llm_engine, EmailCategory, ClassificationResult
 from src.core.security import LinkScanner
 from src.audio.tts import create_tts_engine
 from src.audio.stt import create_stt_engine
+from src.core.graph import MailWorkflow
 
 console = Console()
 
@@ -42,7 +43,7 @@ BANNER = """
  ██║ ╚═╝ ██║██║  ██║██║███████╗██║ ╚═╝ ██║██║██║ ╚████║██████╔╝
  ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═════╝ 
 [/bold cyan]
-[dim]🔒 Privacy-First Local AI Email Assistant • v0.1.0[/dim]
+[dim]🔒 Privacy-First Local AI Email Assistant • v0.2.0 (LangGraph)[/dim]
 """
 
 
@@ -68,6 +69,14 @@ class MailMindApp:
         self._processed_emails: list[ProcessedEmail] = []
         self._running = False
         self._stats: UsageStats = None  # Will be initialized on run
+        
+        # Initialize Workflow
+        self._workflow = MailWorkflow(
+            llm_engine=self._llm,
+            scanner=self._scanner,
+            tts_engine=self._speaker,
+            stt_engine=self._listener
+        )
         
     def run(self, continuous: bool = False, check_interval: int = 60):
         """
@@ -206,7 +215,7 @@ class MailMindApp:
                 break
     
     def _process_email(self, email: Email):
-        """Process a single email: classify, summarize, and optionally speak."""
+        """Process a single email using LangGraph."""
         console.print(f"\n{email}\n")
         
         # Show email body preview
@@ -218,107 +227,29 @@ class MailMindApp:
             padding=(0, 1)
         ))
         
-        # Classify
-        classification = self._llm.classify(
-            subject=email.subject,
-            body=email.body,
-            sender=email.sender
-        )
-        
-        # Security Scan
-        security_analysis = self._scanner.analyze_email_content(email.body)
-        security_context = ""
-        
-        if not security_analysis["safe"]:
-            # Prepend security warning to summary context
-            security_context = "SECURITY WARNING: " + "; ".join(security_analysis["warnings"]) + "\n\n"
-            
-            # Force classification update if dangerous
-            if classification.category != EmailCategory.SPAM:
-                 classification = ClassificationResult(
-                     category=EmailCategory.SPAM,
-                     reason=f"Security Threat Detected: {security_analysis['warnings'][0]}"
-                 )
-        elif security_analysis["link_count"] > 0:
-            # Explicitly state links are safe
-            security_context = f"Security Check: {security_analysis['link_count']} links found. All links appear SAFE via Google Safe Browsing.\n\n"
-        
-        # Summarize (always, for context)
-        # We inject security warnings into the body sent to summarizer
-        summary_body = security_context + email.body
-        
-        summary = self._llm.summarize(
-            subject=email.subject,
-            body=summary_body
-        )
-        
-        processed = ProcessedEmail(
-            email=email,
-            classification=classification,
-            summary=summary
-        )
-        self._processed_emails.append(processed)
-        
-        # Log this email was processed
-        if self._stats:
-            self._stats = log_email_processed(self._stats)
-        
-        # Speak all email summaries
-        if self._speaker:
-            category_name = classification.category.value.lower()
-            self._speaker.speak(
-                f"{category_name} email from {email.sender_name}. {summary}"
+        # Invoke the graph
+        config = {"configurable": {"thread_id": email.uid}, "recursion_limit": 100}
+        try:
+            final_state = self._workflow.graph.invoke(
+                {"email": email, "messages": []},
+                config=config
             )
-            processed.spoken = True
             
-            # Listen for response on important emails
-            # Listen for response (wait 5s)
-            if self._listener:
-                self._handle_voice_command(processed)
-    
-    def _handle_voice_command(self, processed: ProcessedEmail):
-        """Handle voice commands after reading an email."""
-        console.print("\n[bold cyan]💬 What would you like to do?[/bold cyan]")
-        console.print("[dim]Say: 'reply', 'skip', 'read again', or ask a question[/dim]")
-        
-        if not self._listener:
-            return
-        
-        command = self._listener.listen()
-        
-        if not command:
-            return
-        
-        command_lower = command.lower()
-        
-        if "skip" in command_lower or "next" in command_lower:
-            console.print("[dim]⏭️  Skipping...[/dim]")
-            return
-        
-        if "read again" in command_lower or "repeat" in command_lower:
-            if self._speaker:
-                self._speaker.speak(processed.summary)
-            return
-        
-        if "reply" in command_lower:
-            console.print("[cyan]What would you like to say?[/cyan]")
-            intent = self._listener.listen()
+            processed = ProcessedEmail(
+                email=email,
+                classification=final_state.get("classification"),
+                summary=final_state.get("summary", ""),
+                spoken=True # Assuming graph spoke it
+            )
+            self._processed_emails.append(processed)
             
-            if intent:
-                email_context = f"From: {processed.email.sender}\nSubject: {processed.email.subject}\n\n{processed.email.body}"
-                reply = self._llm.draft_reply(email_context, intent)
+            # Log this email was processed
+            if self._stats:
+                self._stats = log_email_processed(self._stats)
                 
-                if reply and self._speaker:
-                    self._speaker.speak(f"Here's the draft: {reply}")
-            return
-        
-        # Treat as a question
-        email_context = f"From: {processed.email.sender}\nSubject: {processed.email.subject}\n\n{processed.email.body}"
-        answer = self._llm.ask(command, email_context)
-        
-        if answer and self._speaker:
-            self._speaker.speak(answer)
-    
+        except Exception as e:
+            console.print(f"[red]Error processing email: {e}[/red]")
+
     def _show_summary(self):
         """Show summary of processed emails."""
         if not self._processed_emails:
@@ -334,6 +265,9 @@ class MailMindApp:
         table.add_column("Category")
         
         for p in self._processed_emails:
+            if not p.classification:
+                continue
+                
             cat_style = {
                 EmailCategory.IMPORTANT: "bold red",
                 EmailCategory.NEWSLETTER: "yellow",
@@ -350,9 +284,9 @@ class MailMindApp:
         console.print(table)
         
         # Stats
-        important = sum(1 for p in self._processed_emails if p.classification.category == EmailCategory.IMPORTANT)
-        newsletter = sum(1 for p in self._processed_emails if p.classification.category == EmailCategory.NEWSLETTER)
-        spam = sum(1 for p in self._processed_emails if p.classification.category == EmailCategory.SPAM)
+        important = sum(1 for p in self._processed_emails if p.classification and p.classification.category == EmailCategory.IMPORTANT)
+        newsletter = sum(1 for p in self._processed_emails if p.classification and p.classification.category == EmailCategory.NEWSLETTER)
+        spam = sum(1 for p in self._processed_emails if p.classification and p.classification.category == EmailCategory.SPAM)
         
         console.print(f"\n🔴 Important: {important}  🟡 Newsletter: {newsletter}  ⚫ Spam: {spam}")
 
