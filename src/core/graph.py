@@ -35,7 +35,14 @@ class MailWorkflow:
         # 2. Add Edges
         workflow.set_entry_point("classify")
         
-        workflow.add_edge("classify", "security_scan")
+        workflow.add_conditional_edges(
+            "classify",
+            self.check_for_links,
+            {
+                "scan": "security_scan",
+                "skip": "summarize"
+            }
+        )
         workflow.add_edge("security_scan", "summarize")
         workflow.add_edge("summarize", "speak_summary")
         
@@ -76,6 +83,14 @@ class MailWorkflow:
 
     # --- Node Implementations ---
 
+    def check_for_links(self, state: AgentState) -> Literal["scan", "skip"]:
+        # console.print("[dim]DEBUG: check_for_links[/dim]")
+        email = state["email"]
+        urls = self.scanner.extract_urls(email.body)
+        if urls:
+            return "scan"
+        return "skip"
+
     def classify_email(self, state: AgentState) -> Dict[str, Any]:
         # console.print("[dim]DEBUG: classify[/dim]")
         email = state["email"]
@@ -109,7 +124,7 @@ class MailWorkflow:
     def summarize_email(self, state: AgentState) -> Dict[str, Any]:
         # console.print("[dim]DEBUG: summarize[/dim]")
         email = state["email"]
-        analysis = state.get("security_analysis", {})
+        analysis = state.get("security_analysis") or {}
         
         context_prefix = ""
         if not analysis.get("safe", True):
